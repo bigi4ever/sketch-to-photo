@@ -56,8 +56,10 @@ export default {
     const photo =
       (wish ? 'It must contain everything the person asked for: ' + wish.replace(/[.\s]*$/, '.') + ' ' : '') +
       'Real people have natural human anatomy, skin, hair and real clothes; animals, plants, water, sky and objects ' +
-      'have real-world materials and textures. The sun is real sunlight: a bright glow or lens flare in a natural ' +
-      'sky, never a yellow disc with drawn rays. Natural lighting, realistic proportions, depth of field and shadows, ' +
+      'have real-world materials and textures. The sun is a real light source: a blinding white-gold glow with ' +
+      'soft haze or lens flare, never a solid or flat yellow disc and never drawn rays. Clouds are real soft ' +
+      'clouds in the sky. Fish in the water swim just under the surface or leap out of it, partly submerged, ' +
+      'with splashes and reflections, never lying on top of the water. Natural lighting, realistic proportions, depth of field and shadows, ' +
       'shot on a professional camera. No drawing, no outlines, no cartoon, no illustration, no clip art, no toy, ' +
       'no puppet, no text.';
     const prompt = free
@@ -119,7 +121,9 @@ async function describe(env, bytes, type, wish) {
     'real-world photo this sketch stands for. Name EVERY element with how many there are, their colors, size, and ' +
     'where each one is placed (left, right, top, bottom, center). Read the drawing\'s symbols as the real things ' +
     'they stand for: a stick figure is a real person, blue squiggles are sea waves, a yellow circle with lines is ' +
-    'the sun shining, small "v" or "m" marks in the sky are flying birds, fish shapes in the water are real fish. ' +
+    'the sun shining, small "v" or "m" marks in the sky are flying birds, a closed puffy or bumpy outline in the ' +
+    'sky is a cloud, fish shapes in the water are real fish. Do not skip small elements: every cloud, bird and fish ' +
+    'drawn must be in the description. ' +
     'Describe only the real scene, never the drawing, its lines or its style.' +
     (wish
       ? ' The person who drew it says: "' + wish + '". This is the truth about who and what is in the picture ' +
