@@ -72,8 +72,10 @@ export default {
     const fd = new FormData();
     fd.append('prompt', prompt);
     if (!free) fd.append('input_image_0', new Blob([bytes], { type }), 'sketch');
-    fd.append('width', String(SIZE));
-    fd.append('height', String(SIZE));
+    // The app asks for its board's shape; sizes are kept to multiples of 16 up to SIZE.
+    const side = name => Math.min(SIZE, Math.max(256, Math.round(Number(form.get(name)) / 16) * 16 || SIZE));
+    fd.append('width', String(side('width')));
+    fd.append('height', String(side('height')));
     const body = new Response(fd);
 
     let out;
