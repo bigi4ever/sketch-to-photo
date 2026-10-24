@@ -60,7 +60,7 @@
   .board {
     position: relative;
     width: 100%;
-    aspect-ratio: 1 / 1;
+    aspect-ratio: 1 / 1; /* made taller on load to fill the screen, see fitBoard() */
     background: #fff;
     border-radius: var(--radius);
     overflow: hidden;
@@ -76,20 +76,22 @@
 
   .tools { display: flex; flex-direction: column; gap: 10px; background: var(--panel); border-radius: var(--radius); padding: 10px; }
   .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .colors { display: flex; gap: 5px; flex-wrap: wrap; flex: 1; }
+  /* Colors and tools each stay on one row at any phone width: buttons shrink instead of wrapping. */
+  .colors { display: flex; gap: 5px; flex: 1; justify-content: space-between; }
   .swatch {
-    width: 28px; height: 28px; border-radius: 50%;
+    flex: 0 1 30px; min-width: 0; aspect-ratio: 1; border-radius: 50%;
     border: 2px solid rgba(255,255,255,.15);
   }
+  .tool-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .tool-row > button, .sizes > button { flex: 0 1 44px; min-width: 0; width: auto; height: auto; aspect-ratio: 1; }
   .swatch.on { outline: 3px solid var(--accent); outline-offset: 2px; }
-  .sizes { display: flex; gap: 6px; }
+  .sizes { display: contents; } /* its buttons sit in the tool row like the others */
   .size {
-    width: 40px; height: 40px; border-radius: 10px; background: var(--panel-2);
+    border-radius: 10px; background: var(--panel-2);
     display: grid; place-items: center;
   }
   .size i { display: block; background: var(--text); border-radius: 50%; }
   .size.on, .tool.on { outline: 2px solid var(--accent); }
-  .spacer { flex: 1; }
   .tool { background: var(--panel-2); }
 
   textarea {
@@ -204,10 +206,9 @@
       <div class="row">
         <div class="colors" id="colors"></div>
       </div>
-      <div class="row">
+      <div class="tool-row">
         <div class="sizes" id="sizes"></div>
         <button class="icon-btn tool" id="eraser" aria-label="מחק">🧽</button>
-        <div class="spacer"></div>
         <button class="icon-btn" id="undo" aria-label="בטל" disabled>↩️</button>
         <button class="icon-btn" id="clear" aria-label="נקה הכול">🗑️</button>
       </div>
@@ -367,7 +368,7 @@
   // ---------- Drawing ----------
   const pad = $('pad');
   const ctx = pad.getContext('2d', { willReadFrequently: true });
-  const COLORS = ['#111111', '#7a4a1f', '#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa', '#ec407a', '#90a4ae'];
+  const COLORS = ['#111111', '#7a4a1f', '#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa', '#ec407a'];
   const SIZES = [6, 14, 28, 52];
   let color = COLORS[0], size = SIZES[1], erasing = false, dirty = false;
   const history = [];
@@ -376,7 +377,19 @@
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, pad.width, pad.height);
   }
-  resetPad();
+
+  // Make the board taller than square when the screen has room, up to 3:4, so the whole page still fits
+  // without scrolling. Done once on load: resizing the canvas later would erase the drawing.
+  function fitBoard() {
+    const board = pad.parentElement;
+    const bottomGap = parseFloat(getComputedStyle($('app')).paddingBottom) || 0;
+    const spare = innerHeight - bottomGap - $('generate').getBoundingClientRect().bottom;
+    const w = board.clientWidth;
+    const h = Math.min(w * 4 / 3, w + Math.max(0, spare));
+    pad.width = 1024;
+    pad.height = Math.round(1024 * h / w);
+    board.style.aspectRatio = pad.width + ' / ' + pad.height;
+  }
 
   COLORS.forEach((c, i) => {
     const b = document.createElement('button');
@@ -403,6 +416,10 @@
     });
     $('sizes').appendChild(b);
   });
+
+  // After the color and size buttons exist, so their rows are measured too.
+  fitBoard();
+  resetPad();
 
   function setEraser(on) { erasing = on; $('eraser').classList.toggle('on', on); }
   $('eraser').addEventListener('click', () => setEraser(!erasing));
@@ -481,11 +498,19 @@
   }
 
   // Cloudflare's FLUX.2 [klein] takes input images under 512x512.
-  function smallPadBlob(size) {
+  function smallPadBlob(max) {
     const c = document.createElement('canvas');
-    c.width = c.height = size;
-    c.getContext('2d').drawImage(pad, 0, 0, size, size);
+    const k = max / Math.max(pad.width, pad.height);
+    c.width = Math.round(pad.width * k);
+    c.height = Math.round(pad.height * k);
+    c.getContext('2d').drawImage(pad, 0, 0, c.width, c.height);
     return new Promise(res => c.toBlob(res, 'image/png'));
+  }
+  // The photo comes out in the board's shape (width / height, 3:4 up to 1:1).
+  const boardRatio = () => pad.width / pad.height;
+  function geminiAspect() {
+    const options = [['1:1', 1], ['4:5', 0.8], ['3:4', 0.75]];
+    return options.reduce((best, o) => Math.abs(o[1] - boardRatio()) < Math.abs(best[1] - boardRatio()) ? o : best)[0];
   }
   function imageMime(b64) {
     return b64.startsWith('/9j/') ? 'image/jpeg' : b64.startsWith('UklGR') ? 'image/webp' : 'image/png';
@@ -530,7 +555,7 @@
           { text: prompt },
           { inline_data: { mime_type: 'image/png', data: await blobToBase64(blob) } },
         ] }],
-        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+        generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: geminiAspect() } },
       }),
     });
     if (!res.ok) throw await apiError(res);
@@ -553,7 +578,7 @@
     form.append('model', model);
     form.append('image', blob, 'sketch.png');
     form.append('prompt', prompt);
-    form.append('size', '1024x1024');
+    form.append('size', boardRatio() < 0.9 ? '1024x1536' : '1024x1024');
     const res = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + key },
@@ -572,6 +597,8 @@
     form.append('image', await smallPadBlob(480), 'sketch.png');
     form.append('description', desc);
     form.append('mode', mode);
+    form.append('width', String(Math.round(1024 * boardRatio() / 16) * 16));
+    form.append('height', '1024');
     const headers = {};
     if (password) headers['X-App-Password'] = password;
     const res = await fetch(url, { method: 'POST', headers, body: form });
