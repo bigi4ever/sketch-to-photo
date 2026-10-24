@@ -40,12 +40,9 @@
     min-height: 100%;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
     padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
   }
-  header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  h1 { font-size: 1.3rem; margin: 0; }
-  h1 span { color: var(--accent); }
 
   .icon-btn {
     width: 44px; height: 44px;
@@ -96,8 +93,8 @@
 
   textarea {
     width: 100%;
-    min-height: 54px;
-    resize: vertical;
+    min-height: 44px;
+    resize: none; /* grows with the text up to 3 lines, see the desc input handler */
     background: var(--panel);
     border: 1px solid var(--panel-2);
     border-radius: var(--radius);
@@ -105,7 +102,9 @@
   }
   textarea::placeholder { color: var(--muted); }
 
-  .modes { display: flex; gap: 6px; background: var(--panel); border-radius: var(--radius); padding: 4px; }
+  .actions { display: flex; gap: 8px; align-items: stretch; }
+  .actions .icon-btn { height: auto; min-height: 44px; margin-inline-start: auto; }
+  .modes { flex: 1; display: flex; gap: 6px; background: var(--panel); border-radius: var(--radius); padding: 4px; }
   .modes[hidden] { display: none; }
   .modes button {
     flex: 1; padding: 9px 6px; border-radius: 10px; background: transparent; color: var(--muted); font-size: .92rem;
@@ -130,7 +129,7 @@
   .result { display: none; flex-direction: column; gap: 12px; }
   .app.show-result .editor { display: none; }
   .app.show-result .result { display: flex; }
-  .editor { display: flex; flex-direction: column; gap: 12px; }
+  .editor { display: flex; flex-direction: column; gap: 8px; }
   .result img {
     width: 100%; border-radius: var(--radius); display: block; background: var(--panel);
     box-shadow: 0 6px 24px rgba(0,0,0,.35);
@@ -191,11 +190,6 @@
 </head>
 <body>
 <div class="app" id="app">
-  <header>
-    <h1>מציור <span>לתמונה</span></h1>
-    <button class="icon-btn" id="settingsBtn" aria-label="הגדרות">⚙️</button>
-  </header>
-
   <section class="editor">
     <div class="board">
       <canvas id="pad" width="1024" height="1024"></canvas>
@@ -214,11 +208,14 @@
       </div>
     </div>
 
-    <textarea id="desc" rows="2" placeholder="מה ציירת? (לא חובה, אבל עוזר) — למשל: ״דייג על סירת עץ בים בשקיעה״"></textarea>
+    <textarea id="desc" rows="1" placeholder="מה ציירת? (לא חובה) למשל: דייג על סירה בים"></textarea>
 
-    <div class="modes" id="modes" role="radiogroup" aria-label="סגנון">
-      <button type="button" data-mode="follow" role="radio">🎯 צמוד לציור</button>
-      <button type="button" data-mode="free" role="radio">📷 מציאותי יותר</button>
+    <div class="actions">
+      <div class="modes" id="modes" role="radiogroup" aria-label="סגנון">
+        <button type="button" data-mode="follow" role="radio">🎯 צמוד לציור</button>
+        <button type="button" data-mode="free" role="radio">📷 מציאותי יותר</button>
+      </div>
+      <button class="icon-btn" id="settingsBtn" aria-label="הגדרות">⚙️</button>
     </div>
 
     <div class="error" id="error"></div>
@@ -415,6 +412,13 @@
       document.querySelectorAll('.size').forEach(x => x.classList.toggle('on', x === b));
     });
     $('sizes').appendChild(b);
+  });
+
+  // The description box starts as one line and grows with the text, up to 3 lines.
+  $('desc').addEventListener('input', () => {
+    const el = $('desc');
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight + 2, 3 * (parseFloat(getComputedStyle(el).lineHeight) || 22) + 24) + 'px';
   });
 
   // After the color and size buttons exist, so their rows are measured too.
