@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>מציור לתמונה</title>
+<meta name="description" content="מציירים סקיצה, והבינה המלאכותית הופכת אותה לתמונה אמיתית.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#14161f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<style>
+  :root {
+    --bg: #14161f;
+    --panel: #1f2230;
+    --panel-2: #2a2e40;
+    --text: #eef0ff;
+    --muted: #9aa0bd;
+    --accent: #ffb347;
+    --accent-2: #ff7a59;
+    --danger: #ff6b6b;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+    overscroll-behavior: none;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 0; }
+
+  .app {
+    max-width: 640px;
+    margin: 0 auto;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  h1 { font-size: 1.3rem; margin: 0; }
+  h1 span { color: var(--accent); }
+
+  .icon-btn {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    background: var(--panel);
+    display: grid; place-items: center;
+    font-size: 1.25rem;
+  }
+  .icon-btn:active { background: var(--panel-2); }
+  .icon-btn[disabled] { opacity: .35; }
+
+  .board {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #fff;
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: 0 6px 24px rgba(0,0,0,.35);
+  }
+  #pad { width: 100%; height: 100%; display: block; touch-action: none; }
+  .board .hint {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    color: #b8bccd; font-size: 1.05rem; text-align: center; padding: 24px;
+    pointer-events: none;
+  }
+
+  .tools { display: flex; flex-direction: column; gap: 10px; background: var(--panel); border-radius: var(--radius); padding: 10px; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .colors { display: flex; gap: 5px; flex-wrap: wrap; flex: 1; }
+  .swatch {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.15);
+  }
+  .swatch.on { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .sizes { display: flex; gap: 6px; }
+  .size {
+    width: 40px; height: 40px; border-radius: 10px; background: var(--panel-2);
+    display: grid; place-items: center;
+  }
+  .size i { display: block; background: var(--text); border-radius: 50%; }
+  .size.on, .tool.on { outline: 2px solid var(--accent); }
+  .spacer { flex: 1; }
+  .tool { background: var(--panel-2); }
+
+  textarea {
+    width: 100%;
+    min-height: 54px;
+    resize: vertical;
+    background: var(--panel);
+    border: 1px solid var(--panel-2);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+  }
+  textarea::placeholder { color: var(--muted); }
+
+  .modes { display: flex; gap: 6px; background: var(--panel); border-radius: var(--radius); padding: 4px; }
+  .modes[hidden] { display: none; }
+  .modes button {
+    flex: 1; padding: 9px 6px; border-radius: 10px; background: transparent; color: var(--muted); font-size: .92rem;
+  }
+  .modes button.on { background: var(--panel-2); color: var(--text); font-weight: 600; }
+
+  .primary {
+    width: 100%;
+    padding: 15px;
+    border-radius: var(--radius);
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #1b1206;
+    font-weight: 700;
+    font-size: 1.1rem;
+  }
+  .primary[disabled] { opacity: .5; }
+  .secondary {
+    padding: 12px 14px; border-radius: 12px; background: var(--panel-2); font-weight: 600; flex: 1;
+  }
+
+  /* Result screen */
+  .result { display: none; flex-direction: column; gap: 12px; }
+  .app.show-result .editor { display: none; }
+  .app.show-result .result { display: flex; }
+  .editor { display: flex; flex-direction: column; gap: 12px; }
+  .result img {
+    width: 100%; border-radius: var(--radius); display: block; background: var(--panel);
+    box-shadow: 0 6px 24px rgba(0,0,0,.35);
+  }
+  .compare { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: .9rem; }
+  .compare img { width: 72px; height: 72px; border-radius: 10px; box-shadow: none; background: #fff; }
+
+  /* The app is made for a phone held upright; on its side, ask to turn it back. */
+  .rotate {
+    position: fixed; inset: 0; z-index: 20; background: var(--bg);
+    display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    text-align: center; padding: 24px; font-size: 1.1rem;
+  }
+  .rotate b { font-size: 3rem; display: inline-block; animation: turn 1.6s ease-in-out infinite; }
+  @keyframes turn { 0%, 30% { transform: rotate(90deg); } 70%, 100% { transform: rotate(0deg); } }
+  @media (pointer: coarse) and (orientation: landscape) and (max-height: 640px) {
+    .rotate { display: flex; }
+  }
+
+  /* Loading overlay */
+  .busy {
+    position: fixed; inset: 0; background: rgba(10,11,18,.82);
+    display: none; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    z-index: 10; text-align: center; padding: 24px;
+  }
+  .busy.on { display: flex; }
+  .spinner {
+    width: 56px; height: 56px; border-radius: 50%;
+    border: 5px solid var(--panel-2); border-top-color: var(--accent);
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error {
+    background: rgba(255,107,107,.12); border: 1px solid var(--danger); color: #ffd1d1;
+    border-radius: 12px; padding: 10px 12px; display: none; white-space: pre-wrap; word-break: break-word;
+  }
+  .error.on { display: block; }
+
+  /* Settings dialog */
+  dialog {
+    width: min(520px, calc(100% - 32px));
+    border: 0; border-radius: 18px; padding: 18px;
+    background: var(--panel); color: var(--text);
+  }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog h2 { margin: 0 0 12px; font-size: 1.15rem; }
+  label { display: block; font-size: .9rem; color: var(--muted); margin: 12px 0 6px; }
+  dialog input, dialog select {
+    width: 100%; padding: 11px 12px; border-radius: 10px;
+    background: var(--bg); border: 1px solid var(--panel-2);
+  }
+  dialog input[dir="ltr"] { text-align: left; }
+  .note { font-size: .82rem; color: var(--muted); line-height: 1.5; margin: 8px 0 0; }
+  .note a { color: var(--accent); }
+  .dialog-actions { display: flex; gap: 8px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header>
+    <h1>מציור <span>לתמונה</span></h1>
+    <button class="icon-btn" id="settingsBtn" aria-label="הגדרות">⚙️</button>
+  </header>
+
+  <section class="editor">
+    <div class="board">
+      <canvas id="pad" width="1024" height="1024"></canvas>
+      <div class="hint" id="hint">ציירו כאן משהו — למשל סירה בים ועליה אדם</div>
+    </div>
+
+    <div class="tools">
+      <div class="row">
+        <div class="colors" id="colors"></div>
+      </div>
+      <div class="row">
+        <div class="sizes" id="sizes"></div>
+        <button class="icon-btn tool" id="eraser" aria-label="מחק">🧽</button>
+        <div class="spacer"></div>
+        <button class="icon-btn" id="undo" aria-label="בטל" disabled>↩️</button>
+        <button class="icon-btn" id="clear" aria-label="נקה הכול">🗑️</button>
+      </div>
+    </div>
+
+    <textarea id="desc" rows="2" placeholder="מה ציירת? (לא חובה, אבל עוזר) — למשל: ״דייג על סירת עץ בים בשקיעה״"></textarea>
+
+    <div class="modes" id="modes" role="radiogroup" aria-label="סגנון">
+      <button type="button" data-mode="follow" role="radio">🎯 צמוד לציור</button>
+      <button type="button" data-mode="free" role="radio">📷 מציאותי יותר</button>
+    </div>
+
+    <div class="error" id="error"></div>
+    <button class="primary" id="generate">✨ צור תמונה</button>
+  </section>
+
+  <section class="result">
+    <img id="photo" alt="התמונה שנוצרה">
+    <div class="compare"><img id="sketchThumb" alt="הציור המקורי"><span id="madeInfo">נוצר מהציור שלך</span></div>
+    <div class="row">
+      <button class="secondary" id="save">💾 שמירה / שיתוף</button>
+      <button class="secondary" id="again">🔄 עוד גרסה</button>
+    </div>
+    <button class="primary" id="back">✏️ חזרה לציור</button>
+  </section>
+</div>
+
+<div class="rotate" role="alert"><b>📱</b>סובבו את הטלפון לאורך</div>
+
+<div class="busy" id="busy">
+  <div class="spinner"></div>
+  <div>הופך את הציור לתמונה אמיתית…<br><small style="color:var(--muted)">זה יכול לקחת עד דקה</small></div>
+</div>
+
+<dialog id="settings">
+  <form method="dialog" id="settingsForm">
+    <h2>הגדרות</h2>
+    <label for="provider">שירות יצירת התמונות</label>
+    <select id="provider">
+      <option value="cloudflare">Cloudflare (חינם)</option>
+      <option value="gemini">Google Gemini</option>
+      <option value="openai">OpenAI</option>
+    </select>
+
+    <label for="apiKey" id="apiKeyLabel">מפתח API</label>
+    <input id="apiKey" type="password" dir="ltr" autocomplete="off" spellcheck="false" placeholder="הדביקו כאן את המפתח">
+
+    <label for="model" id="modelLabel">מודל</label>
+    <input id="model" dir="ltr" autocomplete="off" spellcheck="false">
+
+    <p class="note" id="providerNote"></p>
+    <p class="note" id="privacyNote"></p>
+
+    <div class="dialog-actions">
+      <button class="primary" value="save">שמירה</button>
+      <button class="secondary" value="cancel" formnovalidate>ביטול</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- Settings ----------
+  const GUIDE = 'https://github.com/bigi4ever/sketch-to-photo/blob/main/CLOUDFLARE.md';
+  const PROVIDERS = {
+    cloudflare: {
+      model: '',
+      keyLabel: 'סיסמה (רק אם הגדרתם אחת בשרת)',
+      keyPlaceholder: 'אפשר להשאיר ריק',
+      keyRequired: false,
+      modelLabel: 'כתובת השרת ב-Cloudflare',
+      modelPlaceholder: 'https://sketch-to-photo.….workers.dev',
+      note: 'חינם: עשרות תמונות ביום בחשבון Cloudflare חינמי. צריך להקים פעם אחת שרת קטן — <a href="' + GUIDE + '" target="_blank" rel="noopener">הוראות בעברית</a>.',
+      privacy: 'הכתובת והסיסמה נשמרות רק בטלפון הזה, והציור נשלח רק לשרת שלכם ב-Cloudflare.',
+    },
+    gemini: {
+      model: 'gemini-2.5-flash-image',
+      keyLabel: 'מפתח API', keyPlaceholder: 'הדביקו כאן את המפתח', keyRequired: true,
+      modelLabel: 'מודל', modelPlaceholder: '',
+      privacy: 'המפתח נשמר רק בטלפון הזה ונשלח ישירות ל-Google — לא לשום שרת אחר.',
+      note: 'מפתח מקבלים ב-<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. יצירת תמונות לא כלולה בתוכנית החינמית: צריך להפעיל שם חיוב (Billing), בערך 4 סנט לתמונה. אם גוגל הוציאה מודל תמונות חדש יותר, אפשר לכתוב את שמו בשדה המודל.',
+    },
+    openai: {
+      model: 'gpt-image-1',
+      keyLabel: 'מפתח API', keyPlaceholder: 'הדביקו כאן את המפתח', keyRequired: true,
+      modelLabel: 'מודל', modelPlaceholder: '',
+      privacy: 'המפתח נשמר רק בטלפון הזה ונשלח ישירות ל-OpenAI — לא לשום שרת אחר.',
+      note: 'מפתח מקבלים ב-<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI Platform</a> (בתשלום לפי שימוש). אפשר לכתוב בשדה המודל גם מודל תמונות חדש יותר.',
+    },
+  };
+
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('s2p.' + k); return v === null ? d : v; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem('s2p.' + k, v); } catch {} },
+  };
+  const settings = {
+    provider: store.get('provider', 'cloudflare'),
+    keys: {},
+    models: {},
+  };
+  // For Cloudflare the "model" is the address of the user's own Worker.
+  for (const p of Object.keys(PROVIDERS)) {
+    settings.keys[p] = store.get('key.' + p, '');
+    settings.models[p] = store.get('model.' + p, PROVIDERS[p].model);
+  }
+  if (!PROVIDERS[settings.provider]) settings.provider = 'cloudflare';
+
+  const $ = id => document.getElementById(id);
+  const dlg = $('settings');
+
+  function fillSettings(provider) {
+    $('provider').value = provider;
+    $('apiKey').value = settings.keys[provider];
+    $('model').value = settings.models[provider];
+    const cfg = PROVIDERS[provider];
+    $('apiKeyLabel').textContent = cfg.keyLabel;
+    $('apiKey').placeholder = cfg.keyPlaceholder;
+    $('modelLabel').textContent = cfg.modelLabel;
+    $('model').placeholder = cfg.modelPlaceholder;
+    $('providerNote').innerHTML = cfg.note;
+    $('privacyNote').textContent = cfg.privacy;
+  }
+  $('provider').addEventListener('change', () => fillSettings($('provider').value));
+  $('settingsBtn').addEventListener('click', () => { fillSettings(settings.provider); dlg.showModal(); });
+  dlg.addEventListener('close', () => {
+    if (dlg.returnValue !== 'save') return;
+    const p = $('provider').value;
+    settings.provider = p;
+    // Keys and addresses are plain ASCII; drop spaces and invisible direction marks a phone keyboard may paste in.
+    settings.keys[p] = $('apiKey').value.replace(/[^\x21-\x7e]/g, '');
+    settings.models[p] = $('model').value.replace(/[^\x21-\x7e]/g, '') || PROVIDERS[p].model;
+    store.set('provider', p);
+    store.set('key.' + p, settings.keys[p]);
+    store.set('model.' + p, settings.models[p]);
+    showError('');
+    showModes();
+  });
+
+  // Cloudflare only: 'follow' sends the sketch as a layout guide, 'free' sends just the scene description.
+  let mode = store.get('mode', 'follow');
+  function showModes() {
+    $('modes').hidden = settings.provider !== 'cloudflare';
+    document.querySelectorAll('#modes button').forEach(b => {
+      b.classList.toggle('on', b.dataset.mode === mode);
+      b.setAttribute('aria-checked', b.dataset.mode === mode);
+    });
+  }
+  document.querySelectorAll('#modes button').forEach(b => b.addEventListener('click', () => {
+    mode = b.dataset.mode;
+    store.set('mode', mode);
+    showModes();
+  }));
+  showModes();
+
+  // ---------- Drawing ----------
+  const pad = $('pad');
+  const ctx = pad.getContext('2d', { willReadFrequently: true });
+  const COLORS = ['#111111', '#7a4a1f', '#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa', '#ec407a', '#90a4ae'];
+  const SIZES = [6, 14, 28, 52];
+  let color = COLORS[0], size = SIZES[1], erasing = false, dirty = false;
+  const history = [];
+
+  function resetPad() {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, pad.width, pad.height);
+  }
+  resetPad();
+
+  COLORS.forEach((c, i) => {
+    const b = document.createElement('button');
+    b.className = 'swatch' + (i === 0 ? ' on' : '');
+    b.style.background = c;
+    b.setAttribute('aria-label', 'צבע ' + (i + 1));
+    b.addEventListener('click', () => {
+      color = c; setEraser(false);
+      document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('on', s === b));
+    });
+    $('colors').appendChild(b);
+  });
+  SIZES.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.className = 'size' + (s === size ? ' on' : '');
+    b.setAttribute('aria-label', 'עובי ' + (i + 1));
+    const dot = document.createElement('i');
+    const px = 4 + i * 6;
+    dot.style.width = dot.style.height = px + 'px';
+    b.appendChild(dot);
+    b.addEventListener('click', () => {
+      size = s;
+      document.querySelectorAll('.size').forEach(x => x.classList.toggle('on', x === b));
+    });
+    $('sizes').appendChild(b);
+  });
+
+  function setEraser(on) { erasing = on; $('eraser').classList.toggle('on', on); }
+  $('eraser').addEventListener('click', () => setEraser(!erasing));
+
+  function snapshot() {
+    history.push(ctx.getImageData(0, 0, pad.width, pad.height));
+    if (history.length > 25) history.shift();
+    $('undo').disabled = false;
+  }
+  function setDirty(v) { dirty = v; $('hint').style.display = v ? 'none' : ''; }
+
+  $('undo').addEventListener('click', () => {
+    const img = history.pop();
+    if (img) ctx.putImageData(img, 0, 0);
+    $('undo').disabled = history.length === 0;
+    if (history.length === 0) setDirty(false);
+  });
+  $('clear').addEventListener('click', () => {
+    if (!dirty) return;
+    snapshot();
+    resetPad();
+    setDirty(false);
+  });
+
+  let drawing = null; // { id, x, y }
+  function point(e) {
+    const r = pad.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * pad.width / r.width, y: (e.clientY - r.top) * pad.height / r.height };
+  }
+  function stroke(from, to) {
+    ctx.strokeStyle = erasing ? '#fff' : color;
+    ctx.lineWidth = erasing ? size * 2 : size;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+  }
+  pad.addEventListener('pointerdown', e => {
+    if (drawing) return;
+    pad.setPointerCapture(e.pointerId);
+    snapshot();
+    const p = point(e);
+    drawing = { id: e.pointerId, ...p };
+    stroke(p, p);
+    setDirty(true);
+    showError('');
+  });
+  pad.addEventListener('pointermove', e => {
+    if (!drawing || e.pointerId !== drawing.id) return;
+    const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of events.length ? events : [e]) {
+      const p = point(ev);
+      stroke(drawing, p);
+      drawing.x = p.x; drawing.y = p.y;
+    }
+  });
+  const end = e => { if (drawing && e.pointerId === drawing.id) drawing = null; };
+  pad.addEventListener('pointerup', end);
+  pad.addEventListener('pointercancel', end);
+
+  // ---------- Image generation ----------
+  function buildPrompt(desc) {
+    let p =
+      'The attached image is a rough, hand-drawn sketch (it may look like a child\'s drawing). ' +
+      'First identify every element in it: objects, people, animals, vehicles, buildings, plants, sky, water, ground, weather, etc., ' +
+      'and where each one is placed. Then create a brand-new PHOTOREALISTIC photograph that contains those same elements as real things ' +
+      'in the real world, arranged in the same composition and positions, using the sketch colors only as hints. ' +
+      'It must look exactly like a real photo taken with a high-quality camera: natural lighting, real materials and textures, ' +
+      'correct proportions and perspective, realistic depth and shadows. ' +
+      'Do NOT keep the drawing style: no outlines, no crayon or marker strokes, no cartoon, no illustration, no paper texture, ' +
+      'no text, no borders, no frame.';
+    if (desc) p += '\nThe person who drew it describes it as (may be in Hebrew): "' + desc + '"';
+    return p;
+  }
+
+  // Cloudflare's FLUX.2 [klein] takes input images under 512x512.
+  function smallPadBlob(size) {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    c.getContext('2d').drawImage(pad, 0, 0, size, size);
+    return new Promise(res => c.toBlob(res, 'image/png'));
+  }
+  function imageMime(b64) {
+    return b64.startsWith('/9j/') ? 'image/jpeg' : b64.startsWith('UklGR') ? 'image/webp' : 'image/png';
+  }
+
+  function padBlob() {
+    return new Promise(res => pad.toBlob(res, 'image/png'));
+  }
+  function blobToBase64(blob) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1]);
+      r.onerror = rej;
+      r.readAsDataURL(blob);
+    });
+  }
+
+  async function apiError(res) {
+    let msg = res.status + ' ' + res.statusText;
+    try {
+      const j = await res.json();
+      msg = (j.error && (j.error.message || j.error.status)) || msg;
+    } catch {}
+    if (res.status === 401 || res.status === 403 || /api key/i.test(msg)) return new Error('המפתח לא התקבל. בדקו אותו בהגדרות.\n(' + msg + ')');
+    if (res.status === 404) return new Error('המודל לא נמצא. בדקו את שם המודל בהגדרות.\n(' + msg + ')');
+    // Gemini's free tier has no image-generation quota at all: the 429 says "free_tier ... limit: 0".
+    if (res.status === 429 && /free_tier/i.test(msg) && /limit: 0\b/.test(msg)) {
+      return new Error('התוכנית החינמית של Gemini לא כוללת יצירת תמונות.\n' +
+        'כדי שזה יעבוד: ב-Google AI Studio מפעילים חיוב (Billing) לפרויקט של המפתח — בערך 4 סנט לתמונה — ' +
+        'או עוברים ל-OpenAI בהגדרות ⚙️.');
+    }
+    if (res.status === 429) return new Error('יותר מדי בקשות או שנגמרה המכסה. נסו שוב בעוד רגע.\n(' + msg + ')');
+    return new Error(msg);
+  }
+
+  async function generateGemini(blob, prompt, key, model) {
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({
+        contents: [{ parts: [
+          { text: prompt },
+          { inline_data: { mime_type: 'image/png', data: await blobToBase64(blob) } },
+        ] }],
+        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+      }),
+    });
+    if (!res.ok) throw await apiError(res);
+    const j = await res.json();
+    const parts = (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || [];
+    // Skip intermediate "thought" images and keep the final one.
+    const images = parts.filter(p => (p.inlineData || p.inline_data) && !p.thought);
+    const img = images[images.length - 1];
+    if (!img) {
+      const text = parts.map(p => p.text).filter(Boolean).join(' ');
+      const reason = j.promptFeedback && j.promptFeedback.blockReason;
+      throw new Error('לא התקבלה תמונה.' + (reason ? ' (נחסם: ' + reason + ')' : '') + (text ? '\n' + text : ''));
+    }
+    const d = img.inlineData || img.inline_data;
+    return 'data:' + (d.mimeType || d.mime_type || 'image/png') + ';base64,' + d.data;
+  }
+
+  async function generateOpenAI(blob, prompt, key, model) {
+    const form = new FormData();
+    form.append('model', model);
+    form.append('image', blob, 'sketch.png');
+    form.append('prompt', prompt);
+    form.append('size', '1024x1024');
+    const res = await fetch('https://api.openai.com/v1/images/edits', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + key },
+      body: form,
+    });
+    if (!res.ok) throw await apiError(res);
+    const j = await res.json();
+    const item = j.data && j.data[0];
+    if (!item) throw new Error('לא התקבלה תמונה.');
+    return item.b64_json ? 'data:image/png;base64,' + item.b64_json : item.url;
+  }
+
+  async function generateCloudflare(blob, desc, password, url) {
+    if (!/^https:\/\//i.test(url)) url = 'https://' + url;
+    const form = new FormData();
+    form.append('image', await smallPadBlob(480), 'sketch.png');
+    form.append('description', desc);
+    form.append('mode', mode);
+    const headers = {};
+    if (password) headers['X-App-Password'] = password;
+    const res = await fetch(url, { method: 'POST', headers, body: form });
+    if (!res.ok) {
+      const err = await apiError(res);
+      if (res.status === 401) throw new Error('הסיסמה לא נכונה. היא צריכה להיות זהה לסיסמה שכתובה בקוד של השרת.');
+      if (res.status === 404 || res.status === 405) throw new Error('הכתובת לא מובילה לשרת של האפליקציה. בדקו את כתובת השרת בהגדרות.');
+      if (res.status === 429) throw new Error('נגמרה המכסה החינמית של היום ב-Cloudflare. היא מתחדשת כל לילה (בין 2:00 ל-3:00 שעון ישראל).');
+      throw err;
+    }
+    const j = await res.json();
+    if (!j.image) throw new Error('לא התקבלה תמונה מהשרת.');
+    if (j.timing) stepTimes = 'תרגום ' + j.timing.translate + ' · תיאור הציור ' + j.timing.describe + ' · תמונה ' + j.timing.image;
+    return 'data:' + imageMime(j.image) + ';base64,' + j.image;
+  }
+
+  function showError(msg) {
+    $('error').textContent = msg;
+    $('error').classList.toggle('on', !!msg);
+  }
+
+  let lastSketch = null;
+  let stepTimes = '';
+  async function generate(blob) {
+    const p = settings.provider;
+    const key = settings.keys[p];
+    if (PROVIDERS[p].keyRequired ? !key : !settings.models[p]) {
+      fillSettings(p);
+      dlg.showModal();
+      return;
+    }
+    showError('');
+    $('busy').classList.add('on');
+    const started = Date.now();
+    stepTimes = '';
+    try {
+      const desc = $('desc').value.trim();
+      const src = p === 'cloudflare'
+        ? await generateCloudflare(blob, desc, key, settings.models[p])
+        : await (p === 'openai' ? generateOpenAI : generateGemini)(blob, buildPrompt(desc), key, settings.models[p]);
+      $('photo').src = src;
+      $('sketchThumb').src = URL.createObjectURL(blob);
+      $('madeInfo').textContent = 'נוצר מהציור שלך ב-' + Math.round((Date.now() - started) / 1000) + ' שניות' +
+        (stepTimes ? ' (' + stepTimes + ')' : '');
+      $('app').classList.add('show-result');
+      window.scrollTo(0, 0);
+    } catch (err) {
+      const offline = err instanceof TypeError && /failed to fetch|networkerror|load failed/i.test(err.message);
+      const msg = offline ? 'אין חיבור לשירות. בדקו את החיבור לאינטרנט ונסו שוב.' : err.message;
+      showError(msg);
+      if ($('app').classList.contains('show-result')) { $('app').classList.remove('show-result'); }
+    } finally {
+      $('busy').classList.remove('on');
+    }
+  }
+
+  $('generate').addEventListener('click', async () => {
+    if (!dirty) { showError('קודם ציירו משהו על הלוח 🙂'); return; }
+    lastSketch = await padBlob();
+    generate(lastSketch);
+  });
+  $('again').addEventListener('click', () => lastSketch && generate(lastSketch));
+  $('back').addEventListener('click', () => $('app').classList.remove('show-result'));
+
+  $('save').addEventListener('click', async () => {
+    const src = $('photo').src;
+    const blob = await (await fetch(src)).blob();
+    const file = new File([blob], 'sketch-photo-' + Date.now() + '.png', { type: blob.type || 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'מציור לתמונה' }); return; }
+      catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file);
+    a.download = file.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  });
+
+  // Installed app: hold it upright. Browsers only allow the lock there, so failures are expected and ignored.
+  if (matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches) {
+    try { screen.orientation.lock('portrait').catch(() => {}); } catch {}
+  }
+
+  if ('serviceWorker' in navigator) {
+    addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+})();
+</script>
+</body>
+</html>
