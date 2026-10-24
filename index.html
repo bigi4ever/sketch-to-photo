@@ -111,6 +111,18 @@
   }
   .modes button.on { background: var(--panel-2); color: var(--text); font-weight: 600; }
 
+  /* Art styles: one row of chips that scrolls sideways. */
+  .styles {
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -16px; padding: 2px 16px; scroll-padding: 0 16px;
+  }
+  .styles::-webkit-scrollbar { display: none; }
+  .styles button {
+    flex: 0 0 auto; padding: 8px 12px; border-radius: 999px; white-space: nowrap; font-size: .9rem;
+    background: var(--panel); color: var(--muted); border: 1px solid transparent;
+  }
+  .styles button.on { color: var(--text); border-color: var(--accent); background: var(--panel-2); font-weight: 600; }
+
   .primary {
     width: 100%;
     padding: 15px;
@@ -125,10 +137,16 @@
     padding: 12px 14px; border-radius: 12px; background: var(--panel-2); font-weight: 600; flex: 1;
   }
 
-  /* Result screen */
-  .result { display: none; flex-direction: column; gap: 12px; }
-  .app.show-result .editor { display: none; }
-  .app.show-result .result { display: flex; }
+  /* Result and gallery screens */
+  .result, .gallery { display: none; flex-direction: column; gap: 12px; }
+  .app.show-result .editor, .app.show-gallery .editor { display: none; }
+  .app.show-result .result, .app.show-gallery .gallery { display: flex; }
+  .result [hidden] { display: none; }
+  .gallery h2 { margin: 4px 0 0; font-size: 1.2rem; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .grid button { padding: 0; border-radius: 10px; overflow: hidden; background: var(--panel); aspect-ratio: 3 / 4; }
+  .grid img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .empty { color: var(--muted); text-align: center; margin: 24px 0; line-height: 1.6; }
   .editor { display: flex; flex-direction: column; gap: 8px; }
   .result img {
     width: 100%; border-radius: var(--radius); display: block; background: var(--panel);
@@ -211,12 +229,15 @@
     <textarea id="desc" rows="1" placeholder="מה ציירת? (לא חובה) למשל: דייג על סירה בים"></textarea>
 
     <div class="actions">
-      <div class="modes" id="modes" role="radiogroup" aria-label="סגנון">
+      <div class="modes" id="modes" role="radiogroup" aria-label="כמה להיצמד לציור">
         <button type="button" data-mode="follow" role="radio">🎯 צמוד לציור</button>
-        <button type="button" data-mode="free" role="radio">📷 מציאותי יותר</button>
+        <button type="button" data-mode="free" role="radio">🎈 חופשי יותר</button>
       </div>
+      <button class="icon-btn" id="galleryBtn" aria-label="הגלריה שלי">🖼️</button>
       <button class="icon-btn" id="settingsBtn" aria-label="הגדרות">⚙️</button>
     </div>
+
+    <div class="styles" id="styles" role="radiogroup" aria-label="סגנון התמונה"></div>
 
     <div class="error" id="error"></div>
     <button class="primary" id="generate">✨ צור תמונה</button>
@@ -228,8 +249,16 @@
     <div class="row">
       <button class="secondary" id="save">💾 שמירה / שיתוף</button>
       <button class="secondary" id="again">🔄 עוד גרסה</button>
+      <button class="secondary" id="remove" hidden>🗑️ מחיקה</button>
     </div>
     <button class="primary" id="back">✏️ חזרה לציור</button>
+  </section>
+
+  <section class="gallery">
+    <h2>🖼️ הגלריה שלי</h2>
+    <div class="grid" id="grid"></div>
+    <p class="empty" id="galleryEmpty" hidden></p>
+    <button class="primary" id="galleryBack">✏️ חזרה לציור</button>
   </section>
 </div>
 
@@ -362,6 +391,37 @@
   }));
   showModes();
 
+  // Art styles. The keys match STYLES in cloudflare-worker.js; the English text is for Gemini and OpenAI.
+  const STYLES = [
+    { id: '', label: '📷 מציאותי' },
+    { id: 'cyberpunk', label: '🌃 סייברפאנק', text: 'cyberpunk. A neon-lit futuristic world at night, glowing magenta and cyan neon lights, holographic signs, high-tech gear and cybernetic details, wet reflective surfaces, cinematic and highly detailed.' },
+    { id: 'steampunk', label: '🕰️ סטימפאנק', text: 'steampunk. A Victorian retro-futuristic world of brass and copper machinery, gears, rivets, steam pipes and pressure gauges, leather and goggles, warm sepia tones, highly detailed.' },
+    { id: 'gothic', label: '🦇 גותי', text: 'gothic dark fantasy. A moody, mysterious scene with gothic architecture, mist, moonlight and deep shadows, muted desaturated colors with crimson accents, dramatic lighting.' },
+    { id: 'anime', label: '🌸 אנימה', text: 'Japanese anime. Clean line art, vibrant cel-shaded colors, expressive anime characters, a detailed hand-painted anime background.' },
+    { id: 'animation3d', label: '🧸 סרט אנימציה', text: '3D animated family movie. Cute stylized characters with big expressive eyes, smooth colorful materials, soft global illumination, a polished 3D render.' },
+    { id: 'watercolor', label: '💧 צבעי מים', text: 'watercolor painting. Soft translucent washes, gentle color bleeds, loose expressive brushwork, textured watercolor paper.' },
+    { id: 'oil', label: '🖌️ ציור שמן', text: 'classical oil painting. Rich textured brushstrokes on canvas, deep saturated colors, dramatic light like an old master painting.' },
+    { id: 'fantasy', label: '🐉 פנטזיה', text: 'epic fantasy art. A magical, enchanted world with glowing light, sparkling magic, a dramatic sky and rich saturated colors, a detailed digital painting.' },
+  ];
+  const styleOf = id => STYLES.find(st => st.id === id) || STYLES[0];
+  let style = styleOf(store.get('style', '')).id;
+  STYLES.forEach(st => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = st.label;
+    b.setAttribute('role', 'radio');
+    b.addEventListener('click', () => { style = st.id; store.set('style', style); showStyles(); });
+    $('styles').appendChild(b);
+  });
+  function showStyles() {
+    [...$('styles').children].forEach((b, i) => {
+      const on = STYLES[i].id === style;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', on);
+    });
+  }
+  showStyles();
+
   // ---------- Drawing ----------
   const pad = $('pad');
   const ctx = pad.getContext('2d', { willReadFrequently: true });
@@ -487,8 +547,15 @@
   pad.addEventListener('pointercancel', end);
 
   // ---------- Image generation ----------
-  function buildPrompt(desc) {
-    let p =
+  function buildPrompt(desc, styleText) {
+    let p = styleText
+      ? 'The attached image is a rough, hand-drawn sketch (it may look like a child\'s drawing). ' +
+        'First identify every element in it and where each one is placed. Then create a brand-new, finished, ' +
+        'high-quality artwork that contains those same elements, arranged in the same composition and positions, ' +
+        'using the sketch colors only as hints. Style: ' + styleText + ' Every person, animal and object is fully ' +
+        'rendered in this style with proper anatomy and detail. Do NOT keep the childlike drawing: no stick figures, ' +
+        'no crayon or marker strokes, no text, no borders, no frame.'
+      :
       'The attached image is a rough, hand-drawn sketch (it may look like a child\'s drawing). ' +
       'First identify every element in it: objects, people, animals, vehicles, buildings, plants, sky, water, ground, weather, etc., ' +
       'and where each one is placed. Then create a brand-new PHOTOREALISTIC photograph that contains those same elements as real things ' +
@@ -601,6 +668,7 @@
     form.append('image', await smallPadBlob(480), 'sketch.png');
     form.append('description', desc);
     form.append('mode', mode);
+    form.append('style', style);
     form.append('width', String(Math.round(1024 * boardRatio() / 16) * 16));
     form.append('height', '1024');
     const headers = {};
@@ -617,6 +685,90 @@
     if (!j.image) throw new Error('לא התקבלה תמונה מהשרת.');
     if (j.timing) stepTimes = 'תרגום ' + j.timing.translate + ' · תיאור הציור ' + j.timing.describe + ' · תמונה ' + j.timing.image;
     return 'data:' + imageMime(j.image) + ';base64,' + j.image;
+  }
+
+  // ---------- Gallery: every photo is kept on the phone (IndexedDB) until deleted ----------
+  const gallery = (() => {
+    let opened = null;
+    const db = () => opened || (opened = new Promise((res, rej) => {
+      const req = indexedDB.open('s2p', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('photos', { keyPath: 'id', autoIncrement: true });
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    }));
+    const run = async (mode, fn) => {
+      const tx = (await db()).transaction('photos', mode);
+      const req = fn(tx.objectStore('photos'));
+      return new Promise((res, rej) => {
+        tx.oncomplete = () => res(req.result);
+        tx.onerror = tx.onabort = () => rej(tx.error);
+      });
+    };
+    return {
+      add: item => run('readwrite', st => st.add(item)),
+      all: () => run('readonly', st => st.getAll()),
+      remove: id => run('readwrite', st => st.delete(id)),
+    };
+  })();
+
+  async function keepInGallery(src, sketch, desc) {
+    try {
+      const photo = await (await fetch(src)).blob();
+      await gallery.add({ created: Date.now(), photo, sketch, desc, style, mode });
+      // Ask the browser not to clear the gallery when the phone runs low on space.
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  const urls = [];
+  const urlFor = blob => { const u = URL.createObjectURL(blob); urls.push(u); return u; };
+  function dropUrls() { urls.splice(0).forEach(u => URL.revokeObjectURL(u)); }
+
+  // Which screen is showing: 'editor', 'result' or 'gallery'. viewing is the gallery item open in the result screen.
+  let viewing = null;
+  function show(screen) {
+    $('app').classList.toggle('show-result', screen === 'result');
+    $('app').classList.toggle('show-gallery', screen === 'gallery');
+    window.scrollTo(0, 0);
+  }
+
+  async function openGallery() {
+    viewing = null;
+    dropUrls();
+    $('grid').textContent = '';
+    show('gallery');
+    let items;
+    try { items = (await gallery.all()).reverse(); }
+    catch { items = null; }
+    $('galleryEmpty').hidden = !!(items && items.length);
+    $('galleryEmpty').textContent = items
+      ? 'עוד אין כאן תמונות. כל תמונה שתיצרו תישמר כאן.'
+      : 'הגלריה לא זמינה בדפדפן הזה.';
+    (items || []).forEach(item => {
+      const b = document.createElement('button');
+      b.setAttribute('aria-label', 'תמונה מ-' + new Date(item.created).toLocaleString('he-IL'));
+      const img = document.createElement('img');
+      img.src = urlFor(item.photo);
+      img.alt = '';
+      b.appendChild(img);
+      b.addEventListener('click', () => openSaved(item));
+      $('grid').appendChild(b);
+    });
+  }
+
+  function openSaved(item) {
+    viewing = item;
+    $('photo').src = urlFor(item.photo);
+    $('sketchThumb').src = urlFor(item.sketch);
+    const when = new Date(item.created).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' });
+    $('madeInfo').textContent = styleOf(item.style).label + ' · ' + when + (item.desc ? ' · ' + item.desc : '');
+    $('again').hidden = true;
+    $('remove').hidden = false;
+    $('back').textContent = '🖼️ חזרה לגלריה';
+    show('result');
   }
 
   function showError(msg) {
@@ -642,18 +794,24 @@
       const desc = $('desc').value.trim();
       const src = p === 'cloudflare'
         ? await generateCloudflare(blob, desc, key, settings.models[p])
-        : await (p === 'openai' ? generateOpenAI : generateGemini)(blob, buildPrompt(desc), key, settings.models[p]);
+        : await (p === 'openai' ? generateOpenAI : generateGemini)(blob, buildPrompt(desc, styleOf(style).text), key, settings.models[p]);
+      const seconds = Math.round((Date.now() - started) / 1000);
+      const saved = await keepInGallery(src, blob, desc);
+      viewing = null;
+      dropUrls();
       $('photo').src = src;
-      $('sketchThumb').src = URL.createObjectURL(blob);
-      $('madeInfo').textContent = 'נוצר מהציור שלך ב-' + Math.round((Date.now() - started) / 1000) + ' שניות' +
-        (stepTimes ? ' (' + stepTimes + ')' : '');
-      $('app').classList.add('show-result');
-      window.scrollTo(0, 0);
+      $('sketchThumb').src = urlFor(blob);
+      $('madeInfo').textContent = styleOf(style).label + ' · נוצר ב-' + seconds + ' שניות' +
+        (stepTimes ? ' (' + stepTimes + ')' : '') + (saved ? ' · נשמר בגלריה' : '');
+      $('again').hidden = false;
+      $('remove').hidden = true;
+      $('back').textContent = '✏️ חזרה לציור';
+      show('result');
     } catch (err) {
       const offline = err instanceof TypeError && /failed to fetch|networkerror|load failed/i.test(err.message);
       const msg = offline ? 'אין חיבור לשירות. בדקו את החיבור לאינטרנט ונסו שוב.' : err.message;
       showError(msg);
-      if ($('app').classList.contains('show-result')) { $('app').classList.remove('show-result'); }
+      show('editor');
     } finally {
       $('busy').classList.remove('on');
     }
@@ -665,7 +823,14 @@
     generate(lastSketch);
   });
   $('again').addEventListener('click', () => lastSketch && generate(lastSketch));
-  $('back').addEventListener('click', () => $('app').classList.remove('show-result'));
+  $('back').addEventListener('click', () => (viewing ? openGallery() : show('editor')));
+  $('galleryBtn').addEventListener('click', openGallery);
+  $('galleryBack').addEventListener('click', () => { dropUrls(); show('editor'); });
+  $('remove').addEventListener('click', async () => {
+    if (!viewing || !confirm('למחוק את התמונה מהגלריה?')) return;
+    try { await gallery.remove(viewing.id); } catch {}
+    openGallery();
+  });
 
   $('save').addEventListener('click', async () => {
     const src = $('photo').src;

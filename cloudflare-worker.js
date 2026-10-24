@@ -3,7 +3,7 @@
 // The Worker needs a Workers AI binding named AI (Settings → Bindings → Workers AI).
 //
 // The app POSTs multipart form data: image (the sketch, under 512x512), description (optional, any language)
-// and mode ('follow' or 'free').
+// mode ('follow' or 'free'), style (a key of STYLES, or empty for a realistic photo) and width/height.
 // 1. A vision model looks at the sketch and writes an English description of the real scene it shows.
 // 2. FLUX.2 [klein] makes a photo from that description. In 'follow' mode it also gets the sketch as a layout
 //    guide; in 'free' mode it gets only the description, which looks more real but keeps less of the layout.
@@ -18,6 +18,26 @@ const IMAGE_MODEL = '@cf/black-forest-labs/flux-2-klein-4b';
 const VISION_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
 const TEXT_MODEL = '@cf/meta/llama-3.1-8b-instruct';
 const SIZE = 1024;
+
+// Art styles the app offers. Keep the keys in sync with STYLES in index.html.
+const STYLES = {
+  cyberpunk: 'cyberpunk. A neon-lit futuristic world at night, glowing magenta and cyan neon lights, holographic signs, ' +
+    'high-tech gear and cybernetic details, wet reflective surfaces, cinematic and highly detailed.',
+  steampunk: 'steampunk. A Victorian retro-futuristic world of brass and copper machinery, gears, rivets, steam pipes and ' +
+    'pressure gauges, leather and goggles, warm sepia tones, highly detailed.',
+  gothic: 'gothic dark fantasy. A moody, mysterious scene with gothic architecture, mist, moonlight and deep shadows, ' +
+    'muted desaturated colors with crimson accents, dramatic lighting.',
+  anime: 'Japanese anime. Clean line art, vibrant cel-shaded colors, expressive anime characters, a detailed ' +
+    'hand-painted anime background.',
+  animation3d: '3D animated family movie. Cute stylized characters with big expressive eyes, smooth colorful materials, ' +
+    'soft global illumination, a polished 3D render.',
+  watercolor: 'watercolor painting. Soft translucent washes, gentle color bleeds, loose expressive brushwork, ' +
+    'textured watercolor paper.',
+  oil: 'classical oil painting. Rich textured brushstrokes on canvas, deep saturated colors, dramatic light like an old ' +
+    'master painting.',
+  fantasy: 'epic fantasy art. A magical, enchanted world with glowing light, sparkling magic, a dramatic sky and rich ' +
+    'saturated colors, a detailed digital painting.',
+};
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -53,23 +73,28 @@ export default {
     const described = Date.now();
     // Without a description there is nothing to draw from but the sketch itself.
     const free = form.get('mode') === 'free' && scene.length > 1;
-    const photo =
-      (wish ? 'It must contain everything the person asked for: ' + wish.replace(/[.\s]*$/, '.') + ' ' : '') +
-      'Real people have natural human anatomy, skin, hair and real clothes; animals, plants, water, sky and objects ' +
-      'have real-world materials and textures. The sun is a real light source: a blinding white-gold glow with ' +
-      'soft haze or lens flare, never a solid or flat yellow disc and never drawn rays. Clouds are real soft ' +
-      'clouds in the sky. Fish in the water swim just under the surface or leap out of it, partly submerged, ' +
-      'with splashes and reflections, never lying on top of the water. Natural lighting, realistic proportions, depth of field and shadows, ' +
-      'shot on a professional camera. No drawing, no outlines, no cartoon, no illustration, no clip art, no toy, ' +
-      'no puppet, no text.';
+    const style = STYLES[form.get('style')] || '';
+    const wishLine = wish ? 'It must contain everything the person asked for: ' + wish.replace(/[.\s]*$/, '.') + ' ' : '';
+    const look = wishLine + (style
+      ? 'Style: ' + style + ' Every person, animal and object is fully rendered in this style with proper anatomy and ' +
+        'detail. The sun is a glowing light source, never a flat yellow disc with drawn rays. Fish in the water swim ' +
+        'under the surface or leap out of it, partly submerged. No stick figures, no childlike drawing lines, no text.'
+      : 'Real people have natural human anatomy, skin, hair and real clothes; animals, plants, water, sky and objects ' +
+        'have real-world materials and textures. The sun is a real light source: a blinding white-gold glow with ' +
+        'soft haze or lens flare, never a solid or flat yellow disc and never drawn rays. Clouds are real soft ' +
+        'clouds in the sky. Fish in the water swim just under the surface or leap out of it, partly submerged, ' +
+        'with splashes and reflections, never lying on top of the water. Natural lighting, realistic proportions, ' +
+        'depth of field and shadows, shot on a professional camera. No drawing, no outlines, no cartoon, ' +
+        'no illustration, no clip art, no toy, no puppet, no text.');
     const prompt = free
-      ? 'A photorealistic photograph: ' + scene + ' ' + photo
-      : 'Create a photorealistic photograph of the scene this rough sketch represents' +
-        (scene.length > 1 ? ': ' + scene : '.') + ' ' +
+      ? (style ? 'A finished, high-quality artwork: ' : 'A photorealistic photograph: ') + scene + ' ' + look
+      : 'Create ' + (style ? 'a finished, high-quality artwork' : 'a photorealistic photograph') +
+        ' of the scene this rough sketch represents' + (scene.length > 1 ? ': ' + scene : '.') + ' ' +
         'Use the sketch only as a rough guide for what is where and how big; do not copy the shapes of its lines ' +
-        'or any drawn element as it is. Stick figures become real people with real bodies; scribbled lines become ' +
-        'the real thing they stand for (sea waves, grass, clouds, flying birds), never ropes, wires, sticks or objects ' +
-        'shaped like the lines. ' + photo;
+        'or any drawn element as it is. Stick figures become ' +
+        (style ? 'fully drawn characters with real bodies' : 'real people with real bodies') +
+        '; scribbled lines become the real thing they stand for (sea waves, grass, clouds, flying birds), never ropes, ' +
+        'wires, sticks or objects shaped like the lines. ' + look;
 
     const fd = new FormData();
     fd.append('prompt', prompt);
@@ -93,7 +118,7 @@ export default {
     // Seconds per step, shown in the app, to see which step is slow.
     const secs = (a, b) => Math.round((b - a) / 100) / 10;
     const timing = { translate: secs(started, translated), describe: secs(translated, described), image: secs(described, Date.now()) };
-    return json({ image: b64, prompt, mode: free ? 'free' : 'follow', timing });
+    return json({ image: b64, prompt, mode: free ? 'free' : 'follow', style: form.get('style') || '', timing });
   },
 };
 
